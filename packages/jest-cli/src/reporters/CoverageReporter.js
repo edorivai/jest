@@ -19,6 +19,10 @@ import type {GlobalConfig} from 'types/Config';
 import type {Context} from 'types/Context';
 import type {Test} from 'types/TestRunner';
 
+type CoverageReporterOptions = {
+  maxWorkers: number,
+};
+
 const BaseReporter = require('./BaseReporter');
 
 const {clearLine} = require('jest-util');
@@ -27,8 +31,8 @@ const chalk = require('chalk');
 const isCI = require('is-ci');
 const istanbulCoverage = require('istanbul-lib-coverage');
 const libSourceMaps = require('istanbul-lib-source-maps');
-const workerFarm = require('worker-farm');
 const pify = require('pify');
+const workerFarm = require('worker-farm');
 
 const FAIL_COLOR = chalk.bold.red;
 const RUNNING_TEST_COLOR = chalk.bold.dim;
@@ -37,14 +41,16 @@ const isInteractive = process.stdout.isTTY && !isCI;
 
 class CoverageReporter extends BaseReporter {
   _coverageMap: CoverageMap;
-  _maxWorkers: number;
+  _globalConfig: GlobalConfig;
   _sourceMapStore: any;
+  _maxWorkers: number;
 
-  constructor(maxWorkers: number) {
-    super();
-    this._maxWorkers = maxWorkers;
+  constructor(globalConfig: GlobalConfig, options: CoverageReporterOptions) {
+    super(globalConfig);
     this._coverageMap = istanbulCoverage.createCoverageMap({});
+    this._globalConfig = globalConfig;
     this._sourceMapStore = libSourceMaps.createSourceMapStore();
+    this._maxWorkers = options.maxWorkers;
   }
 
   onTestResult(
@@ -68,25 +74,24 @@ class CoverageReporter extends BaseReporter {
 
   async onRunComplete(
     contexts: Set<Context>,
-    globalConfig: GlobalConfig,
     aggregatedResults: AggregatedResult,
   ) {
-    await this._addUntestedFiles(globalConfig, contexts);
+    await this._addUntestedFiles(this._globalConfig, contexts);
     let map = this._coverageMap;
     let sourceFinder: Object;
-    if (globalConfig.mapCoverage) {
+    if (this._globalConfig.mapCoverage) {
       ({map, sourceFinder} = this._sourceMapStore.transformCoverage(map));
     }
 
     const reporter = createReporter();
     try {
-      if (globalConfig.coverageDirectory) {
-        reporter.dir = globalConfig.coverageDirectory;
+      if (this._globalConfig.coverageDirectory) {
+        reporter.dir = this._globalConfig.coverageDirectory;
       }
 
-      let coverageReporters = globalConfig.coverageReporters || [];
+      let coverageReporters = this._globalConfig.coverageReporters || [];
       if (
-        !globalConfig.useStderr &&
+        !this._globalConfig.useStderr &&
         coverageReporters.length &&
         coverageReporters.indexOf('text') === -1
       ) {
@@ -98,17 +103,15 @@ class CoverageReporter extends BaseReporter {
       aggregatedResults.coverageMap = map;
     } catch (e) {
       console.error(
-        chalk.red(
-          `
+        chalk.red(`
         Failed to write coverage reports:
         ERROR: ${e.toString()}
         STACK: ${e.stack}
-      `,
-        ),
+      `),
       );
     }
 
-    this._checkThreshold(globalConfig, map);
+    this._checkThreshold(this._globalConfig, map);
   }
 
   _addUntestedFiles(globalConfig: GlobalConfig, contexts: Set<Context>) {
@@ -129,68 +132,70 @@ class CoverageReporter extends BaseReporter {
           );
       }
     });
-    if (files.length) {
-      if (isInteractive) {
-        process.stderr.write(
-          RUNNING_TEST_COLOR('Running coverage on untested files...'),
-        );
-      }
+    if (!files.length) {
+      return Promise.resolve();
+    }
 
-      const farm = workerFarm(
+    if (isInteractive) {
+      process.stderr.write(
+        RUNNING_TEST_COLOR('Running coverage on untested files...'),
+      );
+    }
+
+    let worker;
+    let farm;
+    if (this._maxWorkers <= 1) {
+      worker = pify(require('./CoverageWorker'));
+    } else {
+      farm = workerFarm(
         {
           autoStart: true,
           maxConcurrentCallsPerWorker: 1,
           maxConcurrentWorkers: this._maxWorkers,
-          maxRetries: 2, // Allow for a couple of transient errors.
+          maxRetries: 2,
         },
         require.resolve('./CoverageWorker'),
       );
-
-      const worker = pify(farm);
-      const instrumentation = [];
-
-      files.forEach(fileObj => {
-        const filename = fileObj.path;
-        const config = fileObj.config;
-        if (!this._coverageMap.data[filename]) {
-          const prom = worker({
-            config,
-            globalConfig,
-            untestedFilePath: filename,
-          })
-            .then(result => {
-              if (result) {
-                this._coverageMap.addFileCoverage(result.coverage);
-                if (result.sourceMapPath) {
-                  this._sourceMapStore.registerURL(
-                    filename,
-                    result.sourceMapPath,
-                  );
-                }
-              }
-            })
-            .catch((error: SerializableError) => {
-              console.error(chalk.red(error.message));
-            });
-          instrumentation.push(prom);
-        }
-      });
-
-      const instrumentAllFiles = Promise.all(instrumentation);
-
-      const afterInstrumentation = () => {
-        if (isInteractive) {
-          clearLine(process.stderr);
-        }
-        workerFarm.end(farm);
-      };
-
-      return instrumentAllFiles
-        .then(afterInstrumentation)
-        .catch(afterInstrumentation);
+      worker = pify(farm);
     }
+    const instrumentation = [];
+    files.forEach(fileObj => {
+      const filename = fileObj.path;
+      const config = fileObj.config;
+      if (!this._coverageMap.data[filename]) {
+        const promise = worker({
+          config,
+          globalConfig,
+          path: filename,
+        })
+          .then(result => {
+            if (result) {
+              this._coverageMap.addFileCoverage(result.coverage);
+              if (result.sourceMapPath) {
+                this._sourceMapStore.registerURL(
+                  filename,
+                  result.sourceMapPath,
+                );
+              }
+            }
+          })
+          .catch((error: SerializableError) => {
+            console.error(chalk.red(error.message));
+          });
+        instrumentation.push(promise);
+      }
+    });
 
-    return Promise.resolve();
+    const cleanup = () => {
+      if (isInteractive) {
+        clearLine(process.stderr);
+      }
+      if (farm) {
+        workerFarm.end(farm);
+      }
+    };
+
+    return Promise.all(instrumentation).then(cleanup).catch(cleanup);
   }
 
   _checkThreshold(globalConfig: GlobalConfig, map: CoverageMap) {

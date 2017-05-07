@@ -9,6 +9,7 @@
  */
 'use strict';
 
+import type {Argv} from 'types/Argv';
 import type {Context} from 'types/Context';
 import type {GlobalConfig} from 'types/Config';
 import type TestWatcher from './TestWatcher';
@@ -20,7 +21,7 @@ const getMaxWorkers = require('./lib/getMaxWorkers');
 const getTestPathPattern = require('./lib/getTestPathPattern');
 const path = require('path');
 const SearchSource = require('./SearchSource');
-const setState = require('./lib/setState');
+const updateArgv = require('./lib/updateArgv');
 const TestRunner = require('./TestRunner');
 const TestSequencer = require('./TestSequencer');
 
@@ -103,9 +104,7 @@ const getTestPaths = async (globalConfig, context, pattern, argv, pipe) => {
     if (pattern.onlyChanged && data.noSCM) {
       if (globalConfig.watch) {
         // Run all the tests
-        setState(argv, 'watchAll', {
-          noSCM: true,
-        });
+        updateArgv(argv, 'watchAll', {noSCM: true});
         pattern = getTestPathPattern(argv);
         data = await source.getTestPaths(pattern);
       } else {
@@ -149,11 +148,11 @@ const processResults = (runResults, options) => {
 const runJest = async (
   globalConfig: GlobalConfig,
   contexts: Array<Context>,
-  argv: Object,
+  argv: Argv,
   pipe: stream$Writable | tty$WriteStream,
   testWatcher: TestWatcher,
   startRun: () => *,
-  onComplete: (testResults: any) => void,
+  onComplete: (testResults: any) => any,
 ) => {
   const maxWorkers = getMaxWorkers(argv);
   const pattern = getTestPathPattern(argv);
@@ -174,6 +173,13 @@ const runJest = async (
   );
 
   allTests = sequencer.sort(allTests);
+
+  if (argv.listTests) {
+    console.log(JSON.stringify(allTests.map(test => test.path)));
+    onComplete && onComplete({success: true});
+    return null;
+  }
+
   if (!allTests.length) {
     new Console(pipe, pipe).log(getNoTestsFoundMessage(testRunData, pattern));
   } else if (
@@ -188,10 +194,10 @@ const runJest = async (
   }
 
   // When using more than one context, make all printed paths relative to the
-  // current cwd.
-  if (contexts.length > 1) {
-    setConfig(contexts, {rootDir: process.cwd()});
-  }
+  // current cwd. rootDir is only used as a token during normalization and
+  // has no special meaning afterwards except for printing information to the
+  // CLI.
+  setConfig(contexts, {rootDir: process.cwd()});
 
   const results = await new TestRunner(globalConfig, {
     maxWorkers,

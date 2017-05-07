@@ -11,7 +11,7 @@
 
 import type {AggregatedResult} from 'types/TestResult';
 import type {Context} from 'types/Context';
-import type {Test, Tests} from 'types/TestRunner';
+import type {Test} from 'types/TestRunner';
 
 const fs = require('fs');
 const getCacheFilePath = require('jest-haste-map').getCacheFilePath;
@@ -38,15 +38,24 @@ class TestSequencer {
   _getCache(test: Test) {
     const {context} = test;
     if (!this._cache.has(context) && context.config.cache) {
-      try {
-        this._cache.set(
-          context,
-          JSON.parse(fs.readFileSync(this._getCachePath(context), 'utf8')),
-        );
-      } catch (e) {}
+      const cachePath = this._getCachePath(context);
+      if (fs.existsSync(cachePath)) {
+        try {
+          this._cache.set(
+            context,
+            JSON.parse(fs.readFileSync(cachePath, 'utf8')),
+          );
+        } catch (e) {}
+      }
     }
 
-    return this._cache.get(context) || {};
+    let cache = this._cache.get(context);
+    if (!cache) {
+      cache = {};
+      this._cache.set(context, cache);
+    }
+
+    return cache;
   }
 
   // When running more tests than we have workers available, sort the tests
@@ -57,7 +66,7 @@ class TestSequencer {
   // After a test run we store the time it took to run a test and on
   // subsequent runs we use that to run the slowest tests first, yielding the
   // fastest results.
-  sort(tests: Tests): Tests {
+  sort(tests: Array<Test>): Array<Test> {
     const stats = {};
     const fileSize = test =>
       stats[test.path] || (stats[test.path] = fs.statSync(test.path).size);
@@ -85,7 +94,7 @@ class TestSequencer {
     });
   }
 
-  cacheResults(tests: Tests, results: AggregatedResult) {
+  cacheResults(tests: Array<Test>, results: AggregatedResult) {
     const map = Object.create(null);
     tests.forEach(test => (map[test.path] = test));
     results.testResults.forEach(testResult => {

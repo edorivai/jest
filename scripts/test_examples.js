@@ -52,6 +52,10 @@ examples.forEach(exampleDirectory => {
 
 runCommand(
   JEST_BIN_PATH,
-  ['--experimentalProjects'].concat(examples),
+  ['--projects'].concat(
+    examples.map(
+      (example, index) => example + (index > 3 ? path.sep + 'package.json' : '')
+    )
+  ),
   EXAMPLES_DIR
 );

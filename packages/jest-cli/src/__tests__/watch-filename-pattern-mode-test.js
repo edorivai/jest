@@ -29,35 +29,36 @@ jest.mock('ansi-escapes', () => ({
 
 jest.mock(
   '../SearchSource',
-  () => class {
-    constructor(context) {
-      this._context = context;
-    }
+  () =>
+    class {
+      constructor(context) {
+        this._context = context;
+      }
 
-    findMatchingTests(pattern) {
-      const paths = [
-        './path/to/file1-test.js',
-        './path/to/file2-test.js',
-        './path/to/file3-test.js',
-        './path/to/file4-test.js',
-        './path/to/file5-test.js',
-        './path/to/file6-test.js',
-        './path/to/file7-test.js',
-        './path/to/file8-test.js',
-        './path/to/file9-test.js',
-        './path/to/file10-test.js',
-        './path/to/file11-test.js',
-      ].filter(path => path.match(pattern));
+      findMatchingTests(pattern) {
+        const paths = [
+          './path/to/file1-test.js',
+          './path/to/file2-test.js',
+          './path/to/file3-test.js',
+          './path/to/file4-test.js',
+          './path/to/file5-test.js',
+          './path/to/file6-test.js',
+          './path/to/file7-test.js',
+          './path/to/file8-test.js',
+          './path/to/file9-test.js',
+          './path/to/file10-test.js',
+          './path/to/file11-test.js',
+        ].filter(path => path.match(pattern));
 
-      return {
-        tests: paths.map(path => ({
-          context: this._context,
-          duration: null,
-          path,
-        })),
-      };
-    }
-  },
+        return {
+          tests: paths.map(path => ({
+            context: this._context,
+            duration: null,
+            path,
+          })),
+        };
+      }
+    },
 );
 
 jest.doMock('chalk', () =>
@@ -141,6 +142,29 @@ describe('Watch mode flows', () => {
       watch: true,
       watchAll: false,
     });
+  });
+
+  it('can select a specific file name from the typeahead results', () => {
+    contexts[0].config = {rootDir: ''};
+    watch(globalConfig, contexts, argv, pipe, hasteMapInstances, stdin);
+
+    // Write a enter pattern mode
+    stdin.emit(KEYS.P);
+
+    // Write a pattern
+    ['p', '.', '*']
+      .map(toHex)
+      .concat([
+        KEYS.ARROW_DOWN,
+        KEYS.ARROW_DOWN,
+        KEYS.ARROW_DOWN,
+        KEYS.ARROW_UP,
+      ])
+      .forEach(key => stdin.emit(key));
+
+    stdin.emit(KEYS.ENTER);
+
+    expect(argv.testPathPattern).toMatchSnapshot();
   });
 
   it('Results in pattern mode get truncated appropriately', () => {

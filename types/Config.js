@@ -19,12 +19,15 @@ export type HasteConfig = {|
   providesModuleNodeModules: Array<string>,
 |};
 
+export type ReporterConfig = [string, Object];
+
 export type ConfigGlobals = Object;
 
 export type DefaultOptions = {|
   automock: boolean,
   bail: boolean,
   browser: boolean,
+  cache: boolean,
   cacheDirectory: Path,
   clearMocks: boolean,
   coveragePathIgnorePatterns: Array<string>,
@@ -42,7 +45,6 @@ export type DefaultOptions = {|
   preset: ?string,
   resetMocks: boolean,
   resetModules: boolean,
-  roots: Array<Path>,
   snapshotSerializers: Array<Path>,
   testEnvironment: string,
   testMatch: Array<Glob>,
@@ -55,6 +57,7 @@ export type DefaultOptions = {|
   useStderr: boolean,
   verbose: ?boolean,
   watch: boolean,
+  watchman: boolean,
 |};
 
 export type InitialOptions = {|
@@ -75,6 +78,7 @@ export type InitialOptions = {|
   forceExit?: boolean,
   globals?: ConfigGlobals,
   haste?: HasteConfig,
+  reporters?: Array<ReporterConfig | string>,
   logHeapUsage?: boolean,
   mapCoverage?: boolean,
   moduleDirectories?: Array<string>,
@@ -88,6 +92,7 @@ export type InitialOptions = {|
   notify?: boolean,
   preprocessorIgnorePatterns?: Array<Glob>,
   preset?: ?string,
+  projects: ?Array<Glob>,
   replname?: ?string,
   resetMocks?: boolean,
   resetModules?: boolean,
@@ -118,6 +123,8 @@ export type InitialOptions = {|
   watchman?: boolean,
 |};
 
+export type SnapshotUpdateState = 'all' | 'new' | 'none';
+
 export type GlobalConfig = {|
   bail: boolean,
   collectCoverage: boolean,
@@ -132,13 +139,15 @@ export type GlobalConfig = {|
   mapCoverage: boolean,
   noStackTrace: boolean,
   notify: boolean,
+  projects: Array<Glob>,
   replname: ?string,
+  reporters: Array<ReporterConfig>,
   rootDir: Path,
   silent: boolean,
   testNamePattern: string,
   testPathPattern: string,
   testResultsProcessor: ?string,
-  updateSnapshot: boolean,
+  updateSnapshot: SnapshotUpdateState,
   useStderr: boolean,
   verbose: ?boolean,
   watch: boolean,
@@ -157,11 +166,10 @@ export type ProjectConfig = {|
   moduleDirectories: Array<string>,
   moduleFileExtensions: Array<string>,
   moduleLoader: Path,
-  moduleNameMapper: {[key: string]: string} | Array<[string, string]>,
+  moduleNameMapper: Array<[string, string]>,
   modulePathIgnorePatterns: Array<string>,
   modulePaths: Array<string>,
   name: string,
-  preset: ?string,
   resetMocks: boolean,
   resetModules: boolean,
   resolver: ?Path,

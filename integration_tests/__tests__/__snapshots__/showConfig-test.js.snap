@@ -27,7 +27,6 @@ exports[`jest --showConfig outputs config info and exits 1`] = `
     "moduleNameMapper": {},
     "modulePathIgnorePatterns": [],
     "name": "[md5 hash]",
-    "preset": null,
     "resetMocks": false,
     "resetModules": false,
     "rootDir": "/mocked/root/path/jest/integration_tests/verbose_reporter",
@@ -73,15 +72,19 @@ exports[`jest --showConfig outputs config info and exits 1`] = `
     "mapCoverage": false,
     "noStackTrace": false,
     "notify": false,
+    "projects": [
+      "/mocked/root/path/jest/integration_tests/verbose_reporter"
+    ],
     "rootDir": "/mocked/root/path/jest/integration_tests/verbose_reporter",
     "testPathPattern": "",
     "testResultsProcessor": null,
+    "updateSnapshot": "all",
     "useStderr": false,
     "verbose": null,
     "watch": false,
     "watchman": true
   },
-  "version": "19.0.2"
+  "version": "20.0.0"
 }
 
 `;
